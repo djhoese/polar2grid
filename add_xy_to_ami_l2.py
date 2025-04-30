@@ -17,18 +17,19 @@ import sys
 logger = logging.getLogger(__name__)
 
 
-def add_xy_to_file(nc_file: pathlib.Path) -> None:
+def add_xy_to_file(nc_file: pathlib.Path, units: Literal["radians", "meters"] = "radians") -> None:
     nc = Dataset(nc_file, mode="r+")
 
     num_rows = nc.dimensions["ydim"].size
     num_cols = nc.dimensions["xdim"].size
     gmap = nc["gk2a_imager_projection"]
-    x, y = _calc_xy(num_rows, num_cols, gmap)
+    x, y = _calc_xy(num_rows, num_cols, gmap, units=units)
+    scale_factors = 500.0 if units == "meters" else 500.0 / gmap.perspective_point_height
 
     x_var = nc.createVariable("x", "i2", dimensions=("xdim",))
     x_var.scale_factor = 500.0
     x_var.add_offset = x[0]
-    x_var.units = "m"
+    x_var.units = units
     x_var.axis = "X"
     x_var.long_name = "Geostationary projection x-coordinate"
     x_var.standard_name = "projection_x_coordinate"
@@ -37,14 +38,16 @@ def add_xy_to_file(nc_file: pathlib.Path) -> None:
     y_var = nc.createVariable("y", "i2", dimensions=("ydim",))
     y_var.scale_factor = 500.0
     y_var.add_offset = y[0]
-    y_var.units = "m"
+    y_var.units = units
     y_var.axis = "Y"
     y_var.long_name = "Geostationary projection y-coordinate"
     y_var.standard_name = "projection_y_coordinate"
     y_var[:] = y
 
 
-def _calc_xy(num_rows: int, num_cols: int, gmap: dict) -> tuple[np.ndarray, np.ndarray]:
+def _calc_xy(
+    num_rows: int, num_cols: int, gmap: dict, units: Literal["radians", "meters"] = "radians"
+) -> tuple[np.ndarray, np.ndarray]:
     h = gmap.perspective_point_height
     lfac = gmap.line_scale_factor
     loff = gmap.line_offset
@@ -54,9 +57,14 @@ def _calc_xy(num_rows: int, num_cols: int, gmap: dict) -> tuple[np.ndarray, np.n
     # So 0.5 would be the left extent of the left-most pixel, we want the center point
     x_deg = (np.arange(num_cols) + 1.0 - coff) / (float(cfac) / 2**16)
     y_deg = (np.arange(num_rows) + 1.0 - loff) / (float(lfac) / 2**16)
-    x_meters = np.deg2rad(x_deg) * h
-    y_meters = np.deg2rad(y_deg) * h
-    return x_meters, y_meters
+    x_rads = np.deg2rad(x_deg)
+    y_rads = np.deg2rad(y_deg)
+
+    if units == "meters":
+        x_meters = x_rads * h
+        y_meters = y_rads * h
+        return x_meters, y_meters
+    return x_rads, y_rads
 
 
 def main():
