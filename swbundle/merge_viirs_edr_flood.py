@@ -1,8 +1,12 @@
 #!/usr/bin/env python
 """Merge multiple CSPP VIIRS Floods output files into one single file."""
 
+from __future__ import annotations
+
 import logging
 import sys
+from pathlib import Path
+import datetime
 
 from satpy import Scene
 from pyresample.geometry import SwathDefinition
@@ -10,7 +14,6 @@ from pyresample.area_config import create_area_def
 import xarray as xr
 import numpy as np
 import dask.array as da
-import dask
 
 from netCDF4 import Dataset
 
@@ -21,22 +24,29 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        dest="verbosity",
+        action="count",
+        default=1,
+        help="each occurrence increases verbosity 1 level through ERROR-WARNING-INFO-DEBUG (default WARNING). "
+        "To suppress warnings, see the -q/--quiet option.",
+    )
+    parser.add_argument(
+        "-q",
+        "--quiet",
+        dest="quiet",
+        action="count",
+        default=0,
+        help="each occurrence reduces verbosity 1 level through ERROR-WARNING-INFO-DEBUG (default WARNING)",
+    )
+    parser.add_argument("-l", "--log", dest="log_fn", default="merge_floods.log", help="specify the log filename")
     parser.add_argument("input_files", nargs="+")
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.DEBUG)
+    setup_logging_from_cli(args.verbosity, args.quiet, args.log_fn)
 
-    """
-    :geospatial_lat_min = 27.9296f ;
-    :geospatial_lat_max = 37.6858f ;
-    :geospatial_lon_min = -110.123f ;
-    :geospatial_lon_max = -76.9695f ;
-    :geospatial_lat_units = "degrees_north" ;
-    :geospatial_lon_units = "degrees_east" ;
-    :geospatial_lat_resolution = 0.003372f ;
-    :geospatial_lon_resolution = 0.003372f ;
-
-    """
     extents = []
     min_lon_res = 10000.0
     min_lat_res = 10000.0
@@ -71,7 +81,7 @@ def main():
     )
 
     frames = []
-    for fn, nc in zip(args.input_files, ncs, strict=False):
+    for fn, nc in zip(args.input_files, ncs, strict=True):
         logger.info(f"Loading and resampling from {fn}...")
         lons = da.from_array(nc["lon"][:])
         lats = da.from_array(nc["lat"][:])
@@ -115,6 +125,44 @@ def main():
         lon_var[:] = final_lon[0, :]
         lat_var = final_nc.createVariable("lat", np.float32, dimensions=("lat",))
         lat_var[:] = final_lat[:, 0]
+
+
+def setup_logging_from_cli(
+    verbosity_level: int,
+    quiet_level: int,
+    log_filename: Path | None,
+) -> None:
+    levels = [logging.ERROR, logging.WARN, logging.INFO, logging.DEBUG]
+    level_idx = max(0, min(len(levels) - 1, verbosity_level - quiet_level))
+    setup_logging(console_level=levels[level_idx], log_filename=log_filename)
+
+
+def setup_logging(console_level: int = logging.INFO, log_filename: Path | None = None) -> None:
+    root_logger = logging.getLogger("")
+    root_logger.setLevel(min(console_level, logging.DEBUG))
+
+    # Console output is minimal
+    console = logging.StreamHandler(sys.stderr)
+    console_format = "%(levelname)-8s : %(message)s"
+    console.setFormatter(logging.Formatter(console_format))
+    console.setLevel(console_level)
+    root_logger.addHandler(console)
+
+    # Log file messages have a lot more information
+    if log_filename:
+        run_time = datetime.datetime.now(tz=datetime.timezone.utc)
+        log_filename = Path(str(log_filename).format(run_time=run_time))
+        file_handler = logging.FileHandler(log_filename)
+        file_format = "[%(asctime)s] : %(levelname)-8s : %(name)s : %(funcName)s : %(message)s"
+        file_handler.setFormatter(logging.Formatter(file_format))
+        file_handler.setLevel(logging.DEBUG)
+        root_logger.addHandler(file_handler)
+
+        # Make a traceback logger specifically for adding tracebacks to log file
+        traceback_log = logging.getLogger("traceback")
+        traceback_log.propagate = False
+        traceback_log.setLevel(logging.ERROR)
+        traceback_log.addHandler(file_handler)
 
 
 if __name__ == "__main__":
