@@ -122,7 +122,7 @@ EOF
 
 if [[ ! -d "${output_dir}" ]]; then
     debug "Creating output directory: \"${output_dir}\""
-    mkdir -pv "${output_dir}"
+    mkdir -p "${output_dir}"
 fi
 
 output_filename="${output_dir}/$(get_output_filename "${input_filenames[@]}")"
