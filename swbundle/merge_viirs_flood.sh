@@ -43,7 +43,7 @@ first_fn = os.path.basename(input_filenames[0])
 
 last_fn = os.path.basename(input_filenames[-1])
 end_index = first_fn.find("_e")
-last_end = last_fn[end_index + 1: end_index + 1 + TIME_FIELD_LEN]
+last_end = last_fn[end_index + 1: end_index + 1 + TIME_FIELD_LEN + 1]
 
 prefix = first_fn[:end_index]
 output_fmt = "{prefix}_{last_end}_c{cstr}.nc"
