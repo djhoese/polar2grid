@@ -3,6 +3,24 @@
 # Title needs to match NWS AOIs for AWIPS to accept the file
 # 001 should match Alaska
 NETCDF_TITLE="${NETCDF_TITLE:-VIIRS-Flood-NWS001}"
+# 001 -169.0  -129.0  54.0    72.0
+# 002 -91.0   -66.0   35.0    52.0
+# 003 -106.0  -81.0   37.0    54.0
+# 004 -91.0   -75.0   24.0    36.0
+# 005 -115.0  -90.0   36.0    53.0
+# 006 -115.0  -90.0   23.0    40.0
+# 007 -125.0  -113.0  35.0    52.0
+# 008 -125.0  -113.0  28.0    45.0
+if [ "$NETCDF_TITLE" == "VIIRS-Flood-NWS001" ]; then
+    if [ -z "${MERGE_FLAGS}" ]; then
+        # User can disable MERGE_FLAGS by setting to the empty string (MERGE_FLAGS="")
+        MERGE_FLAGS=""
+    else
+        MERGE_FLAGS="${MERGE_FLAGS:-"-ul_lr -169.0 72.0 -129.0 54.0"}"
+    fi
+else
+    MERGE_FLAGS="${MERGE_FLAGS:-""}"
+fi
 
 if [ $# -le 2 ]; then
     echo "Usage: $0 <output-dir> flood1.nc flood2.nc flood3.nc ..."
@@ -140,7 +158,10 @@ dataset_str=${dataset_str:1}
 # Specify BAND_NAMES (GDAL 3.9+) to force the NetCDF variable name
 # _FillValue for WaterDetection is 1, preserve that for the output
 debug "Merging input NetCDF files..."
-gdal_merge -a_nodata 1 -of netCDF -o "${output_filename}" -co "FORMAT=NC4" -co "BAND_NAMES=WaterDetection" ${dataset_str} 1>&2
+if [ "${MERGE_FLAGS}" != "" ]; then
+    debug "Using additional merge flags: ${MERGE_FLAGS}"
+fi
+gdal_merge -a_nodata 1 -of netCDF -o "${output_filename}" ${MERGE_FLAGS} -co "COMPRESS=DEFLATE" -co "FORMAT=NC4" -co "BAND_NAMES=WaterDetection" ${dataset_str} 1>&2
 
 debug "Updating output netcdf attributes..."
 add_attributes "${output_filename}" "${input_filenames[@]}"
