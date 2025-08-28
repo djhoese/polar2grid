@@ -12,10 +12,8 @@ NETCDF_TITLE="${NETCDF_TITLE:-VIIRS-Flood-NWS001}"
 # 007 -125.0  -113.0  35.0    52.0
 # 008 -125.0  -113.0  28.0    45.0
 if [ "$NETCDF_TITLE" == "VIIRS-Flood-NWS001" ]; then
-    if [ -z "${MERGE_FLAGS}" ]; then
-        # User can disable MERGE_FLAGS by setting to the empty string (MERGE_FLAGS="")
-        MERGE_FLAGS=""
-    else
+    if [ -z ${MERGE_FLAGS+x} ]; then
+        # var is unset
         MERGE_FLAGS="${MERGE_FLAGS:-"-ul_lr -169.0 72.0 -129.0 54.0"}"
     fi
 else
