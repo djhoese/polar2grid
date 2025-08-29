@@ -2,7 +2,7 @@
 
 # Title needs to match NWS AOIs for AWIPS to accept the file
 # 001 should match Alaska
-NETCDF_TITLE="${NETCDF_TITLE:-VIIRS-Flood-NWS001}"
+NETCDF_TITLE="${NETCDF_TITLE:-VIIRS_Flood_NWS001}"
 # 001 -169.0  -129.0  54.0    72.0
 # 002 -91.0   -66.0   35.0    52.0
 # 003 -106.0  -81.0   37.0    54.0
@@ -11,7 +11,7 @@ NETCDF_TITLE="${NETCDF_TITLE:-VIIRS-Flood-NWS001}"
 # 006 -115.0  -90.0   23.0    40.0
 # 007 -125.0  -113.0  35.0    52.0
 # 008 -125.0  -113.0  28.0    45.0
-if [ "$NETCDF_TITLE" == "VIIRS-Flood-NWS001" ]; then
+if [ "$NETCDF_TITLE" == "VIIRS_Flood_NWS001" ]; then
     MERGE_FLAGS="${MERGE_FLAGS-"-ul_lr -169.0 72.0 -129.0 54.0"}"
 else
     MERGE_FLAGS="${MERGE_FLAGS:-""}"
