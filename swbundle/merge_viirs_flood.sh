@@ -34,7 +34,6 @@ debug() {
 
 set -e
 
-dataset_str=""
 output_dir=$1
 shift 1
 # get sorted array of input filenames
@@ -133,6 +132,80 @@ with Dataset(output_filename, "a") as out_nc:
 EOF
 }
 
+
+create_forced_lonlat_copies() {
+    python - "$@" <<EOF
+
+import os
+import shutil
+import sys
+import tempfile
+import numpy as np
+from netCDF4 import Dataset
+
+
+def force_32bit_lonlat(nc_file):
+    """Force more consistent spacing in 32-bit lon/lat files."""
+    with Dataset(nc_file, "a") as nc:
+        if nc["lon"].dtype.itemsize != 4:
+            # not 32-bit, algorithm isn't producing 32-bit floats anymore
+            return
+
+        old_lon = nc["lon"][:]
+        res = nc.Resolution
+        if old_lon[1] - old_lon[0] < 0:
+            res = -res
+        new_lon = (np.arange(old_lon.shape[0]) * res + old_lon[0]).astype(np.float32)
+        # assume USA negative longitudes
+        new_lon[new_lon > 0] -= 360.0
+        nc["lon"][:] = new_lon
+
+        old_lat = nc["lat"][:]
+        res = nc.Resolution
+        if old_lat[1] - old_lat[0] < 0:
+            res = -res
+        nc["lat"][:] = (np.arange(old_lat.shape[0]) * res + old_lat[0]).astype(np.float32)
+
+tmp_dir = tempfile.mkdtemp(prefix="merge_floods_")
+input_filenames = sys.argv[1:]
+for orig_nc_path in input_filenames:
+    orig_filename = os.path.basename(orig_nc_path)
+    new_path = os.path.join(tmp_dir, orig_filename)
+    shutil.copy(orig_nc_path, new_path)
+    force_32bit_lonlat(new_path)
+
+print(tmp_dir)
+EOF
+}
+
+
+merge_dataset_string() {
+    local dataset_str=""
+    # Prepare GDAL dataset list
+    for input_fn in "$@"; do
+        if [ ! -f "${input_fn}" ]; then
+            oops "Input file ${input_fn} does not exist"
+        fi
+        dataset_str="${dataset_str} NETCDF:\"${input_fn}\":WaterDetection"
+    done
+    dataset_str=${dataset_str:1}
+    echo "${dataset_str}"
+}
+
+
+simple_merge() {
+    local output_filename="$1"
+    shift 1
+    local dataset_str=$(merge_dataset_string "$@")
+    # Specify BAND_NAMES (GDAL 3.9+) to force the NetCDF variable name
+    # _FillValue for WaterDetection is 1, preserve that for the output
+    debug "Merging input NetCDF files..."
+    if [ "${MERGE_FLAGS}" != "" ]; then
+        debug "Using additional merge flags: ${MERGE_FLAGS}"
+    fi
+    gdal_merge -a_nodata 1 -of netCDF -o "${output_filename}" ${MERGE_FLAGS} -co "COMPRESS=DEFLATE" -co "FORMAT=NC4" -co "BAND_NAMES=WaterDetection" ${dataset_str} 1>&2
+}
+
 if [[ ! -d "${output_dir}" ]]; then
     debug "Creating output directory: \"${output_dir}\""
     mkdir -p "${output_dir}"
@@ -141,25 +214,16 @@ fi
 output_filename="${output_dir}/$(get_output_filename "${input_filenames[@]}")"
 debug "Writing merged output to \"${output_filename}\"..."
 
-# Prepare dataset list for GDAL
-for input_fn in "${input_filenames[@]}"; do
-    if [ ! -f "${input_fn}" ]; then
-        oops "Input file ${input_fn} does not exist"
-    fi
-    dataset_str="${dataset_str} NETCDF:\"${input_fn}\":WaterDetection"
-done
-dataset_str=${dataset_str:1}
+new_input_dir=$(create_forced_lonlat_copies "${input_filenames[@]}")
+debug "Created modified input NetCDF files in ${new_input_dir}"
+simple_merge "${output_filename}" ${new_input_dir}/*.nc
+#simple_merge "${output_filename}" "$@"
 
-# Specify BAND_NAMES (GDAL 3.9+) to force the NetCDF variable name
-# _FillValue for WaterDetection is 1, preserve that for the output
-debug "Merging input NetCDF files..."
-if [ "${MERGE_FLAGS}" != "" ]; then
-    debug "Using additional merge flags: ${MERGE_FLAGS}"
-fi
-gdal_merge -a_nodata 1 -of netCDF -o "${output_filename}" ${MERGE_FLAGS} -co "COMPRESS=DEFLATE" -co "FORMAT=NC4" -co "BAND_NAMES=WaterDetection" ${dataset_str} 1>&2
 
 debug "Updating output netcdf attributes..."
 add_attributes "${output_filename}" "${input_filenames[@]}"
 
+debug "Deleting temporary working directory ${new_input_dir}"
+rm -rf "${new_input_dir}" || debug "Couldn't delete temporary working directory ${new_input_dir}"
 echo "${output_filename}"
 debug "SUCCESS"
