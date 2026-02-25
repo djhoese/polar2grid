@@ -200,6 +200,16 @@ simple_merge() {
     # Specify BAND_NAMES (GDAL 3.9+) to force the NetCDF variable name
     # _FillValue for WaterDetection is 1, preserve that for the output
     debug "Merging input NetCDF files..."
+    # get the resolution in degrees
+    res=$(ncdump -h $1 | grep ":Resolution = " | cut -d ' ' -f 3)
+    # remove floating point 'f' suffix
+    res="${res/f/}"
+    if ! [[ "${MERGE_FLAGS}" =~ -ps ]]; then
+        MERGE_FLAGS="${MERGE_FLAGS} -ps ${res} -${res}"
+        if ! [[ "${MERGE_FLAGS}" =~ -tap ]]; then
+            MERGE_FLAGS="${MERGE_FLAGS} -tap"
+        fi
+    fi
     if [ "${MERGE_FLAGS}" != "" ]; then
         debug "Using additional merge flags: ${MERGE_FLAGS}"
     fi
